@@ -1,15 +1,16 @@
 import os
+
+from datasets import load_dataset
+from fastembed import SparseTextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
-    SparseVectorParams,
     PointStruct,
     SparseVector,
+    SparseVectorParams,
+    VectorParams,
 )
 from sentence_transformers import SentenceTransformer
-from fastembed import SparseTextEmbedding
-from datasets import load_dataset
 
 IMAGES_DIR = "./images"
 os.makedirs(IMAGES_DIR, exist_ok=True)

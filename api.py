@@ -1,16 +1,27 @@
+import asyncio
 import io
 import time
-import asyncio
 from contextlib import asynccontextmanager
-from PIL import Image
-from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.staticfiles import StaticFiles
+
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from prometheus_client import make_asgi_app
-from search import search, search_by_image, multi_query_search, client as qdrant_client
-from llm import generate, reformulate_query, is_fashion_query
-from observability import configure_logging, new_request_id, clear_context, log, search_requests, guardrail_rejections, timed
+from pydantic import BaseModel
+
+from llm import generate, is_fashion_query, reformulate_query
+from observability import (
+    clear_context,
+    configure_logging,
+    guardrail_rejections,
+    log,
+    new_request_id,
+    search_requests,
+    timed,
+)
+from search import client as qdrant_client
+from search import multi_query_search, search, search_by_image
 
 configure_logging()
 
@@ -22,9 +33,12 @@ def _load_filters_cache():
     points, _ = qdrant_client.scroll(collection_name="fashion", limit=10000, with_payload=True)
     colors, genders, categories = set(), set(), set()
     for p in points:
-        if p.payload.get("color"): colors.add(p.payload["color"])
-        if p.payload.get("gender"): genders.add(p.payload["gender"])
-        if p.payload.get("category"): categories.add(p.payload["category"])
+        if p.payload.get("color"):
+            colors.add(p.payload["color"])
+        if p.payload.get("gender"):
+            genders.add(p.payload["gender"])
+        if p.payload.get("category"):
+            categories.add(p.payload["category"])
     _filters_cache["colors"] = sorted(colors)
     _filters_cache["genders"] = sorted(genders)
     _filters_cache["categories"] = sorted(categories)

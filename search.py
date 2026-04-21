@@ -1,19 +1,21 @@
-import os
 import math
+import os
+
+from dotenv import load_dotenv
+from fastembed import SparseTextEmbedding
 from PIL import Image
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    Filter,
     FieldCondition,
+    Filter,
+    Fusion,
+    FusionQuery,
     MatchValue,
     Prefetch,
-    FusionQuery,
-    Fusion,
     SparseVector,
 )
-from sentence_transformers import SentenceTransformer, CrossEncoder
-from fastembed import SparseTextEmbedding
-from dotenv import load_dotenv
+from sentence_transformers import CrossEncoder, SentenceTransformer
+
 from observability import timed
 
 load_dotenv()

@@ -1,5 +1,5 @@
-from sentence_transformers import SentenceTransformer, CrossEncoder
 from fastembed import SparseTextEmbedding
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
 print("Скачиваем clip-ViT-B-32-multilingual-v1...")
 SentenceTransformer('sentence-transformers/clip-ViT-B-32-multilingual-v1').save('./models/clip-multilingual')
