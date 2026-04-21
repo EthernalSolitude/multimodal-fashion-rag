@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -51,7 +52,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Multimodal Fashion RAG", lifespan=lifespan)
-app.mount("/images", StaticFiles(directory="images"), name="images")
+if os.path.isdir("images"):
+    app.mount("/images", StaticFiles(directory="images"), name="images")
 app.mount("/metrics", make_asgi_app())
 
 
