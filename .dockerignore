@@ -1,0 +1,6 @@
+.env
+qdrant_data/
+images/
+models/
+__pycache__/
+*.pyc

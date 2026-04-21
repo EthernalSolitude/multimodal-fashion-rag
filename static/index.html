@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Fashion Search</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f5f5f5; padding: 30px; }
+    h1 { text-align: center; margin-bottom: 24px; color: #222; }
+
+    .search-box { display: flex; gap: 10px; max-width: 600px; margin: 0 auto 16px; }
+    .search-box input { flex: 1; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+    .search-box button { padding: 12px 24px; background: #222; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
+    .search-box button:hover { background: #444; }
+
+    .filters { display: flex; gap: 10px; max-width: 600px; margin: 0 auto 30px; flex-wrap: wrap; }
+    .filters select { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; font-size: 14px; }
+
+    .upload-box { text-align: center; margin-bottom: 30px; color: #666; }
+    .upload-box input { display: none; }
+    .upload-box label { cursor: pointer; padding: 8px 18px; border: 1px dashed #aaa; border-radius: 8px; }
+    .upload-box label:hover { border-color: #222; color: #222; }
+
+    .recommendation { max-width: 900px; margin: 0 auto 24px; background: #fff; border-radius: 10px; padding: 16px 20px; color: #333; border-left: 4px solid #222; }
+    .recommendation .pick { font-weight: bold; margin-bottom: 6px; color: #111; }
+    .recommendation .reason { margin-bottom: 6px; }
+    .recommendation .alt { color: #666; font-size: 14px; margin-bottom: 10px; }
+    .suggestions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .suggestion-chip { background: #eef; border: 1px solid #cce; color: #335; padding: 5px 10px; border-radius: 16px; font-size: 13px; cursor: pointer; }
+    .suggestion-chip:hover { background: #dde; }
+    .subqueries { max-width: 900px; margin: 0 auto 12px; font-size: 12px; color: #888; }
+    .subqueries span { background: #eee; padding: 2px 8px; border-radius: 10px; margin-right: 4px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; max-width: 900px; margin: 0 auto; }
+    .card { background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .card img { width: 100%; height: 200px; object-fit: cover; }
+    .card-body { padding: 10px; }
+    .card-title { font-size: 13px; font-weight: bold; color: #222; margin-bottom: 4px; }
+    .card-meta { font-size: 12px; color: #888; }
+    .card-score { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+    .error { color: red; text-align: center; }
+    .loading { text-align: center; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>👗 Fashion Search</h1>
+
+  <div class="search-box">
+    <input id="query" type="text" placeholder="Например: red jacket for men" />
+    <button onclick="searchText()">Найти</button>
+  </div>
+
+  <div class="filters">
+    <select id="color"><option value="">Любой цвет</option></select>
+    <select id="gender"><option value="">Любой пол</option></select>
+    <select id="category"><option value="">Любая категория</option></select>
+  </div>
+
+  <div class="upload-box">
+    <label for="imageInput">📷 Или загрузи картинку для поиска похожих</label>
+    <input id="imageInput" type="file" accept="image/*" onchange="searchImage(this)" />
+  </div>
+
+  <div id="recommendation" class="recommendation" style="display:none"></div>
+  <div id="subqueries" class="subqueries" style="display:none"></div>
+  <div id="status"></div>
+  <div id="grid" class="grid"></div>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    async function loadFilters() {
+      const res = await fetch(`${API}/filters`);
+      const data = await res.json();
+      const fill = (id, values) => {
+        const sel = document.getElementById(id);
+        values.forEach(v => sel.insertAdjacentHTML('beforeend', `<option value="${v}">${v}</option>`));
+      };
+      fill('color', data.colors);
+      fill('gender', data.genders);
+      fill('category', data.categories);
+    }
+    loadFilters();
+
+    async function searchText() {
+      const query = document.getElementById('query').value.trim();
+      if (!query) return;
+      setLoading(true);
+      const body = {
+        query,
+        top_k: 5,
+        color: document.getElementById('color').value || null,
+        gender: document.getElementById('gender').value || null,
+        category: document.getElementById('category').value || null,
+      };
+      const res = await fetch(`${API}/search`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      render(data);
+    }
+
+    async function searchImage(input) {
+      if (!input.files[0]) return;
+      setLoading(true);
+      const form = new FormData();
+      form.append('file', input.files[0]);
+      const params = new URLSearchParams({ top_k: 5 });
+      const color = document.getElementById('color').value;
+      const gender = document.getElementById('gender').value;
+      const category = document.getElementById('category').value;
+      if (color) params.set('color', color);
+      if (gender) params.set('gender', gender);
+      if (category) params.set('category', category);
+      const res = await fetch(`${API}/search/image?${params}`, {
+        method: 'POST',
+        body: form
+      });
+      const data = await res.json();
+      render(data);
+    }
+
+    function render(data) {
+      const rec = document.getElementById('recommendation');
+      const r = data.recommendation;
+      if (r && (r.pick || r.reason)) {
+        const suggestionsHtml = (r.suggestions || []).map(s =>
+          `<span class="suggestion-chip" onclick="applySuggestion('${s.replace(/'/g, "\\'")}')">${s}</span>`
+        ).join('');
+        rec.innerHTML = `
+          ${r.pick ? `<div class="pick">🏆 ${r.pick}</div>` : ''}
+          ${r.reason ? `<div class="reason">${r.reason}</div>` : ''}
+          ${r.alternatives ? `<div class="alt">${r.alternatives}</div>` : ''}
+          ${suggestionsHtml ? `<div class="suggestions">${suggestionsHtml}</div>` : ''}
+        `;
+        rec.style.display = 'block';
+      } else {
+        rec.style.display = 'none';
+      }
+
+      const sub = document.getElementById('subqueries');
+      if (data.subqueries && data.subqueries.length > 1) {
+        sub.innerHTML = 'Искал по: ' + data.subqueries.map(q => `<span>${q}</span>`).join('');
+        sub.style.display = 'block';
+      } else {
+        sub.style.display = 'none';
+      }
+
+      const grid = document.getElementById('grid');
+      grid.innerHTML = data.products.map(p => `
+        <div class="card">
+          <img src="${p.image_url}" onerror="this.style.display='none'" />
+          <div class="card-body">
+            <div class="card-title">${p.title || '—'}</div>
+            <div class="card-meta">${p.category || ''} · ${p.color || ''} · ${p.gender || ''}</div>
+            <div class="card-score">score: ${p.score}</div>
+          </div>
+        </div>
+      `).join('');
+
+      setLoading(false);
+    }
+
+    function applySuggestion(text) {
+      document.getElementById('query').value = text;
+      searchText();
+    }
+
+    function setLoading(on) {
+      document.getElementById('status').innerHTML = on ? '<p class="loading">Поиск...</p>' : '';
+      if (on) {
+        document.getElementById('grid').innerHTML = '';
+        document.getElementById('recommendation').style.display = 'none';
+      }
+    }
+
+    document.getElementById('query').addEventListener('keydown', e => {
+      if (e.key === 'Enter') searchText();
+    });
+  </script>
+</body>
+</html>

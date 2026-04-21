@@ -1,0 +1,13 @@
+.env
+keys_api.txt
+qdrant_data/
+images/
+models/
+__pycache__/
+*.pyc
+*.log
+.venv/
+venv/
+.idea/
+.vscode/
+CLAUDE.md
