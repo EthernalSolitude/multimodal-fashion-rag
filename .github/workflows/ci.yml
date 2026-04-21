@@ -21,7 +21,7 @@ jobs:
       - name: Install dev deps
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-mock ruff structlog prometheus-client python-dotenv openai pydantic fastapi pillow qdrant-client
+          pip install pytest pytest-mock ruff structlog prometheus-client python-dotenv openai pydantic fastapi python-multipart pillow qdrant-client
 
       - name: Lint with ruff
         run: ruff check .
