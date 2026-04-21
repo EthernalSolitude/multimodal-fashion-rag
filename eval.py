@@ -1,6 +1,7 @@
 import random
 from collections import defaultdict
-from search import search, client
+
+from search import client, search
 
 random.seed(42)
 

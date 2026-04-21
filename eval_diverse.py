@@ -5,8 +5,9 @@
 import json
 import os
 import time
-from search import search, multi_query_search
-from llm import reformulate_query, _client, _model
+
+from llm import _client, _model, reformulate_query
+from search import multi_query_search, search
 
 NUM_QUERIES = int(os.getenv("EVAL_NUM_QUERIES", "30"))
 TOP_K = 5
