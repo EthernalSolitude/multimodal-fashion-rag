@@ -1,0 +1,15 @@
+numpy==1.26.4
+torch>=2.0.0
+sentence-transformers>=2.2.0
+qdrant-client>=1.7.0
+datasets>=2.14.0
+transformers>=4.34.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+openai>=1.30.0
+Pillow>=10.0.0
+fastembed>=0.3.0
+structlog>=24.1.0
+prometheus-client>=0.20.0

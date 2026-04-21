@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: fashion-rag-api
+    metrics_path: /metrics
+    static_configs:
+      # host.docker.internal — API работает на хосте (python api.py)
+      # app:8000 — API работает через docker-compose (тот же network)
+      - targets:
+          - "host.docker.internal:8000"
+          - "app:8000"
