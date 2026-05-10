@@ -61,3 +61,34 @@ def test_point_to_dict_rounds_score():
 
 def test_multi_query_search_empty_returns_empty():
     assert search.multi_query_search([]) == []
+
+
+def test_multi_query_search_dedups_by_id_keeping_max_score():
+    p1_low = MagicMock(id=1, score=0.4, payload={"title": "A", "color": "Blue"})
+    p1_high = MagicMock(id=1, score=0.9, payload={"title": "A", "color": "Blue"})
+    p2 = MagicMock(id=2, score=0.6, payload={"title": "B", "color": "Red"})
+    from unittest.mock import patch
+    with patch.object(search, "_search_hybrid_rrf", side_effect=[[p1_low, p2], [p1_high]]):
+        results = search.multi_query_search(["q1", "q2"], top_k=2, rerank=False, hybrid=True)
+    assert len(results) == 2
+    by_title = {r["title"]: r["score"] for r in results}
+    assert by_title["A"] == 0.9
+
+
+def test_build_filter_ignores_string_keyword_value():
+    f = search._build_filter({"color": "Blue"})
+    assert f is not None
+    assert f.must[0].match.value == "Blue"
+
+
+def test_point_to_dict_preserves_all_payload_fields():
+    point = MagicMock()
+    point.score = 0.5
+    point.payload = {
+        "title": "T", "category": "C", "gender": "G", "color": "X",
+        "image_path": "./images/p.jpg",
+    }
+    d = search._point_to_dict(point)
+    assert d["category"] == "C"
+    assert d["gender"] == "G"
+    assert d["color"] == "X"

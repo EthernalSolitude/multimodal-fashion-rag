@@ -3,6 +3,22 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q --tb=short -p no:langsmith"
 
+[tool.coverage.run]
+omit = [
+    "build_index.py",
+    "download_models.py",
+    "eval.py",
+    "eval_diverse.py",
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
