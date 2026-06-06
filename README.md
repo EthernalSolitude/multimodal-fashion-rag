@@ -2,7 +2,7 @@
 
 Мультимодальный поиск по fashion-каталогу: русские запросы → англоязычные товары, поиск по тексту и по картинке, LLM-консультант с follow-up подсказками. Observability через Prometheus + Grafana, тесты и CI.
 
-[![CI](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-73%25-brightgreen) ![Python](https://img.shields.io/badge/python-3.12-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid-red) ![Docker](https://img.shields.io/badge/docker--compose-ready-2496ED)
+[![CI](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-76%25-brightgreen) ![Python](https://img.shields.io/badge/python-3.12-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid-red) ![Redis](https://img.shields.io/badge/Redis-cache-DC382D) ![Docker](https://img.shields.io/badge/docker--compose-ready-2496ED)
 
 ---
 
@@ -12,8 +12,9 @@
 - **LLM переформулирует запрос** в несколько фраз → fan-out поиск → cross-encoder ранжирует общий список — помогает на нечётких запросах типа «что-нибудь для зала»
 - **Guardrail** — LLM проверяет что запрос про одежду, отказывает на off-topic («расскажи про погоду»), кэширует результат
 - **Observability** — структурированные JSON-логи со сквозным `request_id`, Prometheus-метрики по каждой стадии пайплайна, готовый Grafana-дашборд
-- **41 автоматический тест** (~1.7 сек, без GPU и БД, **coverage 73%**), **CI/CD на GitHub Actions** — линтер, тесты и автоматическая публикация Docker-образа в [GitHub Container Registry](https://github.com/EthernalSolitude/multimodal-fashion-rag/pkgs/container/multimodal-fashion-rag) на каждый push в main
-- **Один `docker compose up --build`** поднимает всё: API, Qdrant, Prometheus, Grafana — или `docker pull ghcr.io/ethernalsolitude/multimodal-fashion-rag:latest`
+- **Redis shared cache** для повторяющихся LLM-запросов (guardrail и переформулировка), fail-open паттерн — сервис работает и без Redis
+- **50 автоматических тестов** (~3.4 сек, без GPU и БД, **coverage 76%**), **CI/CD на GitHub Actions** — линтер, тесты и автоматическая публикация Docker-образа в [GitHub Container Registry](https://github.com/EthernalSolitude/multimodal-fashion-rag/pkgs/container/multimodal-fashion-rag) на каждый push в main
+- **Один `docker compose up --build`** поднимает всё: API, Qdrant, Redis, Prometheus, Grafana — или `docker pull ghcr.io/ethernalsolitude/multimodal-fashion-rag:latest`
 
 ---
 
@@ -105,8 +106,9 @@ EVAL_NUM_QUERIES=30 python eval_diverse.py   # LLM-generated + LLM-judged
 | Sparse embeddings  | BM42 (`Qdrant/bm42-all-minilm-l6-v2-attentions`)  |
 | Reranker           | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`      |
 | LLM                | OpenAI-compatible (Cerebras / Groq / OpenAI / Ollama) |
+| LLM cache          | Redis (shared cache для guardrail + reformulate, fail-open) |
 | Observability      | Prometheus + Grafana + structlog (JSON)           |
-| Tests              | pytest + pytest-mock + pytest-cov (41 тестов, coverage 73%) |
+| Tests              | pytest + pytest-mock + pytest-cov (50 тестов, coverage 76%) |
 | CI/CD              | GitHub Actions (ruff + pytest + Docker → GHCR)    |
 | Orchestration      | Docker Compose                                    |
 

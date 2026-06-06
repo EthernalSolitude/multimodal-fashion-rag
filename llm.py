@@ -1,10 +1,10 @@
 import json
 import os
 import time
-from functools import lru_cache
 
 from dotenv import load_dotenv
 
+from cache import cache_key, get_json, set_json
 from observability import llm_errors, log, timed
 
 load_dotenv()
@@ -33,12 +33,15 @@ _GUARDRAIL_SYS = """Ты классификатор запросов для fash
 Верни строго JSON: {"is_fashion": true/false, "reason": "короткое пояснение по-русски"}"""
 
 
-@lru_cache(maxsize=512)
 def is_fashion_query(query: str) -> tuple[bool, str]:
-    """True если запрос про fashion. Кешируется по тексту запроса."""
+    """True если запрос про fashion. Результат кешируется в Redis на 24ч."""
     q = query.strip()
     if not q:
         return False, "Пустой запрос"
+    key = cache_key("guardrail", q)
+    cached = get_json("guardrail", key)
+    if cached is not None:
+        return bool(cached[0]), str(cached[1])
     with timed("llm_guardrail"):
         try:
             resp = _client().chat.completions.create(
@@ -52,7 +55,9 @@ def is_fashion_query(query: str) -> tuple[bool, str]:
                 temperature=0.0,
             )
             data = json.loads(resp.choices[0].message.content)
-            return bool(data.get("is_fashion", True)), str(data.get("reason", ""))
+            result = (bool(data.get("is_fashion", True)), str(data.get("reason", "")))
+            set_json("guardrail", key, list(result), ttl_seconds=86400)
+            return result
         except Exception as e:
             llm_errors.labels(type="guardrail").inc()
             log.warning("guardrail_failed", error=str(e))
@@ -71,6 +76,10 @@ _REFORMULATE_SYS = """Ты помогаешь искать товары в fashi
 def reformulate_query(query: str, n: int = 3) -> list[str]:
     if not query.strip():
         return [query]
+    key = cache_key("reformulate", query, n)
+    cached = get_json("reformulate", key)
+    if cached is not None:
+        return list(cached)
     with timed("llm_reformulate"):
         try:
             resp = _client().chat.completions.create(
@@ -85,7 +94,9 @@ def reformulate_query(query: str, n: int = 3) -> list[str]:
             )
             data = json.loads(resp.choices[0].message.content)
             queries = [q.strip() for q in data.get("queries", []) if q and q.strip()]
-            return [query] + queries[:n]
+            result = [query] + queries[:n]
+            set_json("reformulate", key, result, ttl_seconds=86400)
+            return result
         except Exception as e:
             llm_errors.labels(type="reformulate").inc()
             log.warning("llm_reformulate_failed", error=str(e))

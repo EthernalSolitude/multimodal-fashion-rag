@@ -40,6 +40,18 @@ guardrail_rejections = Counter(
     labelnames=("reason",),
 )
 
+cache_hits = Counter(
+    "cache_hits_total",
+    "Redis cache hits by namespace",
+    labelnames=("namespace",),
+)
+
+cache_misses = Counter(
+    "cache_misses_total",
+    "Redis cache misses by namespace",
+    labelnames=("namespace",),
+)
+
 
 def configure_logging() -> None:
     logging.basicConfig(format="%(message)s", level=logging.INFO)

@@ -13,15 +13,27 @@ services:
     environment:
       - QDRANT__SERVICE__ENABLE_WEB_UI=true
 
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
   app:
     build: .
     container_name: multimodal-rag-app
     depends_on:
       - qdrant
+      - redis
     env_file:
       - .env
     environment:
       - QDRANT_URL=http://qdrant:6333
+      - REDIS_URL=redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
@@ -67,3 +79,4 @@ volumes:
   hf_cache:
   prometheus_data:
   grafana_data:
+  redis_data:

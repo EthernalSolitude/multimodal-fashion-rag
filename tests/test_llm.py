@@ -20,8 +20,10 @@ def _fake_client(payload: dict) -> MagicMock:
 
 
 def setup_function():
-    """Сбрасываем lru_cache между тестами — иначе is_fashion_query отдаёт старые значения."""
-    llm.is_fashion_query.cache_clear()
+    """Сбрасываем Redis-кеш между тестами — в CI REDIS_URL пуст, fail-open работает,
+    но если кто-то локально включит Redis — тесты не должны загрязнять друг друга."""
+    import cache
+    cache.reset_for_tests()
 
 
 def test_is_fashion_query_accepts_clothing():
@@ -44,12 +46,24 @@ def test_is_fashion_query_empty_string():
     assert "Пуст" in reason
 
 
-def test_is_fashion_query_cached():
+def test_is_fashion_query_uses_cache_when_available():
+    """С активным Redis-кешем повторный вызов с тем же запросом не дёргает LLM."""
     mock_client = _fake_client({"is_fashion": True, "reason": "x"})
-    with patch.object(llm, "_client", return_value=mock_client):
+    cached_value = [True, "x"]
+    with patch.object(llm, "_client", return_value=mock_client), \
+         patch("llm.get_json", side_effect=[None, cached_value]):
         llm.is_fashion_query("кроссовки Nike")
         llm.is_fashion_query("кроссовки Nike")
     assert mock_client.chat.completions.create.call_count == 1
+
+
+def test_is_fashion_query_calls_llm_when_cache_miss():
+    """Без кеша (CI / Redis отключён) каждый вызов идёт в LLM."""
+    mock_client = _fake_client({"is_fashion": True, "reason": "x"})
+    with patch.object(llm, "_client", return_value=mock_client):
+        llm.is_fashion_query("новый запрос 1")
+        llm.is_fashion_query("новый запрос 2")
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 def test_is_fashion_query_fail_open_on_exception():

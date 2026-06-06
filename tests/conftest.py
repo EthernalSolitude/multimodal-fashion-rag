@@ -1,9 +1,14 @@
-"""Стабим тяжёлые ML-зависимости чтобы тесты не грузили CLIP/BM42/Qdrant при старте."""
+"""Стабим тяжёлые ML-зависимости чтобы тесты не грузили CLIP/BM42/Qdrant при старте.
+Также гарантируем что REDIS_URL пуст — кеш fail-open'ится, не пытается коннектиться."""
+import os
 import sys
 from unittest.mock import MagicMock
 
 
 def _install_stubs() -> None:
+    # Кеш отключён по умолчанию в тестах — отдельные тесты переопределяют через monkeypatch
+    os.environ.pop("REDIS_URL", None)
+
     dummy_model = MagicMock()
     dummy_model.encode.return_value = [0.0] * 512
     dummy_model.predict.return_value = [0.5]
