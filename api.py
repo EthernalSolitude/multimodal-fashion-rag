@@ -12,6 +12,7 @@ from prometheus_client import make_asgi_app
 from pydantic import BaseModel
 
 from cache import check_rate_limit
+from chat import run_chat_turn
 from llm import generate, is_fashion_query, reformulate_query
 from observability import (
     clear_context,
@@ -29,7 +30,7 @@ from search import multi_query_search, search, search_by_image
 configure_logging()
 
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
-RATE_LIMITED_PATHS = {"/search", "/search/image"}
+RATE_LIMITED_PATHS = {"/search", "/search/image", "/chat"}
 
 
 _filters_cache: dict = {"colors": [], "genders": [], "categories": []}
@@ -259,6 +260,30 @@ async def search_image_endpoint(
             subqueries=[],
             recommendation=recommendation,
             products=_build_results(products),
+        )
+
+
+class ChatRequest(BaseModel):
+    session_id: str | None = None
+    message: str
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    intent: str
+    response: Recommendation
+    products: list[ProductResult]
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(req: ChatRequest):
+    with timed("total"):
+        result = await _run(run_chat_turn, req.session_id, req.message)
+        return ChatResponse(
+            session_id=result["session_id"],
+            intent=result["intent"],
+            response=Recommendation(**(result["response"] or {})),
+            products=_build_results(result["products"]),
         )
 
 
