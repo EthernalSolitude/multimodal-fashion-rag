@@ -2,84 +2,167 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Fashion Search</title>
+  <title>Fashion RAG</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: sans-serif; background: #f5f5f5; padding: 30px; }
-    h1 { text-align: center; margin-bottom: 24px; color: #222; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; padding: 20px; color: #222; }
+    h1 { text-align: center; margin-bottom: 16px; }
 
-    .search-box { display: flex; gap: 10px; max-width: 600px; margin: 0 auto 16px; }
-    .search-box input { flex: 1; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
-    .search-box button { padding: 12px 24px; background: #222; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
-    .search-box button:hover { background: #444; }
+    .tabs { display: flex; justify-content: center; gap: 4px; margin-bottom: 24px; }
+    .tab { padding: 10px 24px; background: #ddd; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; }
+    .tab.active { background: #222; color: #fff; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
 
-    .filters { display: flex; gap: 10px; max-width: 600px; margin: 0 auto 30px; flex-wrap: wrap; }
-    .filters select { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; font-size: 14px; }
-
-    .upload-box { text-align: center; margin-bottom: 30px; color: #666; }
-    .upload-box input { display: none; }
-    .upload-box label { cursor: pointer; padding: 8px 18px; border: 1px dashed #aaa; border-radius: 8px; }
-    .upload-box label:hover { border-color: #222; color: #222; }
-
-    .recommendation { max-width: 900px; margin: 0 auto 24px; background: #fff; border-radius: 10px; padding: 16px 20px; color: #333; border-left: 4px solid #222; }
-    .recommendation .pick { font-weight: bold; margin-bottom: 6px; color: #111; }
-    .recommendation .reason { margin-bottom: 6px; }
+    /* ---- shared ---- */
+    .container { max-width: 900px; margin: 0 auto; }
+    .recommendation { background: #fff; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; border-left: 4px solid #222; }
+    .recommendation .pick { font-weight: bold; margin-bottom: 6px; }
+    .recommendation .reason { margin-bottom: 6px; color: #444; }
     .recommendation .alt { color: #666; font-size: 14px; margin-bottom: 10px; }
     .suggestions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     .suggestion-chip { background: #eef; border: 1px solid #cce; color: #335; padding: 5px 10px; border-radius: 16px; font-size: 13px; cursor: pointer; }
     .suggestion-chip:hover { background: #dde; }
-    .subqueries { max-width: 900px; margin: 0 auto 12px; font-size: 12px; color: #888; }
-    .subqueries span { background: #eee; padding: 2px 8px; border-radius: 10px; margin-right: 4px; }
-
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; max-width: 900px; margin: 0 auto; }
-    .card { background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+    .card { background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     .card img { width: 100%; height: 200px; object-fit: cover; }
     .card-body { padding: 10px; }
-    .card-title { font-size: 13px; font-weight: bold; color: #222; margin-bottom: 4px; }
+    .card-title { font-size: 13px; font-weight: bold; margin-bottom: 4px; }
     .card-meta { font-size: 12px; color: #888; }
     .card-score { font-size: 11px; color: #aaa; margin-top: 4px; }
+    .loading { text-align: center; color: #888; padding: 20px; }
 
-    .error { color: red; text-align: center; }
-    .loading { text-align: center; color: #888; }
+    /* ---- search tab ---- */
+    .search-box { display: flex; gap: 10px; margin-bottom: 16px; }
+    .search-box input { flex: 1; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+    .search-box button { padding: 12px 24px; background: #222; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
+    .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .filters select { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; font-size: 14px; }
+    .upload-box { text-align: center; margin-bottom: 20px; color: #666; }
+    .upload-box input { display: none; }
+    .upload-box label { cursor: pointer; padding: 8px 18px; border: 1px dashed #aaa; border-radius: 8px; }
+
+    /* ---- chat tab ---- */
+    .chat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 13px; color: #666; }
+    .chat-header .session { font-family: monospace; }
+    .chat-header button { padding: 6px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 6px; }
+    .chat-header button:hover { background: #e0e0e0; }
+    .chat-box { background: #fff; border-radius: 10px; padding: 16px; min-height: 300px; max-height: 50vh; overflow-y: auto; margin-bottom: 16px; }
+    .msg { margin-bottom: 12px; display: flex; gap: 8px; }
+    .msg.user { justify-content: flex-end; }
+    .msg-bubble { padding: 10px 14px; border-radius: 14px; max-width: 75%; line-height: 1.4; font-size: 14px; }
+    .msg.user .msg-bubble { background: #222; color: #fff; }
+    .msg.bot .msg-bubble { background: #eef0ff; color: #222; }
+    .msg.system .msg-bubble { background: #fff7e0; color: #6a5500; font-size: 12px; font-style: italic; }
+    .msg .intent-tag { display: inline-block; padding: 2px 6px; background: #f0f0f0; color: #777; font-size: 10px; font-family: monospace; border-radius: 4px; margin-right: 4px; }
+    .chat-input { display: flex; gap: 10px; }
+    .chat-input input { flex: 1; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .chat-input button { padding: 12px 24px; background: #222; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+
+    /* ---- graph modal ---- */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; }
+    .modal-backdrop.show { display: flex; align-items: center; justify-content: center; }
+    .modal { background: #fff; border-radius: 10px; padding: 24px; max-width: 80vw; max-height: 85vh; overflow: auto; }
+    .modal h2 { margin-bottom: 16px; }
+    .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; float: right; color: #888; }
+    .modal-desc { font-size: 13px; color: #666; margin-top: 16px; }
   </style>
 </head>
 <body>
-  <h1>👗 Fashion Search</h1>
+  <h1>👗 Fashion RAG</h1>
 
-  <div class="search-box">
-    <input id="query" type="text" placeholder="Например: red jacket for men" />
-    <button onclick="searchText()">Найти</button>
+  <div class="tabs">
+    <button class="tab active" data-tab="search">🔍 Поиск</button>
+    <button class="tab" data-tab="chat">💬 Чат (LangGraph)</button>
   </div>
 
-  <div class="filters">
-    <select id="color"><option value="">Любой цвет</option></select>
-    <select id="gender"><option value="">Любой пол</option></select>
-    <select id="category"><option value="">Любая категория</option></select>
+  <!-- ============ SEARCH TAB ============ -->
+  <div class="tab-content active" data-tab="search">
+    <div class="container">
+      <div class="search-box">
+        <input id="query" type="text" placeholder="Например: red jacket for men" />
+        <button onclick="searchText()">Найти</button>
+      </div>
+      <div class="filters">
+        <select id="color"><option value="">Любой цвет</option></select>
+        <select id="gender"><option value="">Любой пол</option></select>
+        <select id="category"><option value="">Любая категория</option></select>
+      </div>
+      <div class="upload-box">
+        <label for="imageInput">📷 Или загрузи картинку для поиска похожих</label>
+        <input id="imageInput" type="file" accept="image/*" onchange="searchImage(this)" />
+      </div>
+      <div id="recommendation" class="recommendation" style="display:none"></div>
+      <div id="status"></div>
+      <div id="grid" class="grid"></div>
+    </div>
   </div>
 
-  <div class="upload-box">
-    <label for="imageInput">📷 Или загрузи картинку для поиска похожих</label>
-    <input id="imageInput" type="file" accept="image/*" onchange="searchImage(this)" />
+  <!-- ============ CHAT TAB ============ -->
+  <div class="tab-content" data-tab="chat">
+    <div class="container">
+      <div class="chat-header">
+        <div>Сессия: <span class="session" id="sessionDisplay">— (будет создана при первом сообщении)</span></div>
+        <div>
+          <button onclick="showGraph()">📊 Граф</button>
+          <button onclick="resetSession()">🔄 Новая сессия</button>
+        </div>
+      </div>
+      <div id="chatBox" class="chat-box">
+        <div class="msg system"><div class="msg-bubble">Это <b>conversational режим</b> через LangGraph. Запросы идут через <code>analyze → search_and_respond / decline</code>. История диалога хранится в Redis (TTL 1ч). Жми "Граф" чтобы увидеть state machine.</div></div>
+      </div>
+      <div class="chat-input">
+        <input id="chatMsg" type="text" placeholder="например: blue shirt for men" />
+        <button onclick="sendChat()">Отправить</button>
+      </div>
+      <div id="chatGrid" class="grid" style="margin-top: 16px;"></div>
+    </div>
   </div>
 
-  <div id="recommendation" class="recommendation" style="display:none"></div>
-  <div id="subqueries" class="subqueries" style="display:none"></div>
-  <div id="status"></div>
-  <div id="grid" class="grid"></div>
+  <!-- ============ GRAPH MODAL ============ -->
+  <div id="graphModal" class="modal-backdrop" onclick="closeGraph(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <button class="modal-close" onclick="closeGraph()">×</button>
+      <h2>LangGraph: chat flow</h2>
+      <div id="mermaidContainer">Загрузка...</div>
+      <div class="modal-desc">
+        <p>Это автогенерируемая диаграмма из <code>chat.py</code>. <b>Сплошные стрелки</b> — безусловные переходы. <b>Пунктирные</b> — условные (зависят от значения state).</p>
+        <p style="margin-top: 8px;">При каждом твоём сообщении: <code>analyze</code> читает историю из Redis и через LLM классифицирует intent, затем граф маршрутизирует — либо в <code>search_and_respond</code> (запрос про одежду), либо в <code>decline</code> (off-topic).</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+    window.__mermaid = mermaid;
+  </script>
 
   <script>
     const API = 'http://localhost:8000';
 
+    // ---------- Tab switching ----------
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === target));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === target));
+      });
+    });
+
+    // ---------- Search tab (text/image/filters) ----------
     async function loadFilters() {
-      const res = await fetch(`${API}/filters`);
-      const data = await res.json();
-      const fill = (id, values) => {
-        const sel = document.getElementById(id);
-        values.forEach(v => sel.insertAdjacentHTML('beforeend', `<option value="${v}">${v}</option>`));
-      };
-      fill('color', data.colors);
-      fill('gender', data.genders);
-      fill('category', data.categories);
+      try {
+        const res = await fetch(`${API}/filters`);
+        const data = await res.json();
+        const fill = (id, values) => {
+          const sel = document.getElementById(id);
+          values.forEach(v => sel.insertAdjacentHTML('beforeend', `<option value="${v}">${v}</option>`));
+        };
+        fill('color', data.colors);
+        fill('gender', data.genders);
+        fill('category', data.categories);
+      } catch (e) { /* ok */ }
     }
     loadFilters();
 
@@ -88,19 +171,13 @@
       if (!query) return;
       setLoading(true);
       const body = {
-        query,
-        top_k: 5,
+        query, top_k: 5,
         color: document.getElementById('color').value || null,
         gender: document.getElementById('gender').value || null,
         category: document.getElementById('category').value || null,
       };
-      const res = await fetch(`${API}/search`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
-      render(data);
+      const res = await fetch(`${API}/search`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+      render(await res.json());
     }
 
     async function searchImage(input) {
@@ -109,77 +186,147 @@
       const form = new FormData();
       form.append('file', input.files[0]);
       const params = new URLSearchParams({ top_k: 5 });
-      const color = document.getElementById('color').value;
-      const gender = document.getElementById('gender').value;
-      const category = document.getElementById('category').value;
-      if (color) params.set('color', color);
-      if (gender) params.set('gender', gender);
-      if (category) params.set('category', category);
-      const res = await fetch(`${API}/search/image?${params}`, {
-        method: 'POST',
-        body: form
-      });
-      const data = await res.json();
-      render(data);
+      ['color', 'gender', 'category'].forEach(k => { const v = document.getElementById(k).value; if (v) params.set(k, v); });
+      const res = await fetch(`${API}/search/image?${params}`, { method: 'POST', body: form });
+      render(await res.json());
     }
 
     function render(data) {
       const rec = document.getElementById('recommendation');
       const r = data.recommendation;
       if (r && (r.pick || r.reason)) {
-        const suggestionsHtml = (r.suggestions || []).map(s =>
-          `<span class="suggestion-chip" onclick="applySuggestion('${s.replace(/'/g, "\\'")}')">${s}</span>`
-        ).join('');
-        rec.innerHTML = `
-          ${r.pick ? `<div class="pick">🏆 ${r.pick}</div>` : ''}
-          ${r.reason ? `<div class="reason">${r.reason}</div>` : ''}
-          ${r.alternatives ? `<div class="alt">${r.alternatives}</div>` : ''}
-          ${suggestionsHtml ? `<div class="suggestions">${suggestionsHtml}</div>` : ''}
-        `;
+        const sugHtml = (r.suggestions || []).map(s => `<span class="suggestion-chip" onclick="applySuggestion('${s.replace(/'/g, "\\'")}')">${s}</span>`).join('');
+        rec.innerHTML = `${r.pick ? `<div class="pick">🏆 ${r.pick}</div>` : ''}${r.reason ? `<div class="reason">${r.reason}</div>` : ''}${r.alternatives ? `<div class="alt">${r.alternatives}</div>` : ''}${sugHtml ? `<div class="suggestions">${sugHtml}</div>` : ''}`;
         rec.style.display = 'block';
-      } else {
-        rec.style.display = 'none';
-      }
-
-      const sub = document.getElementById('subqueries');
-      if (data.subqueries && data.subqueries.length > 1) {
-        sub.innerHTML = 'Искал по: ' + data.subqueries.map(q => `<span>${q}</span>`).join('');
-        sub.style.display = 'block';
-      } else {
-        sub.style.display = 'none';
-      }
-
-      const grid = document.getElementById('grid');
-      grid.innerHTML = data.products.map(p => `
-        <div class="card">
-          <img src="${p.image_url}" onerror="this.style.display='none'" />
-          <div class="card-body">
-            <div class="card-title">${p.title || '—'}</div>
-            <div class="card-meta">${p.category || ''} · ${p.color || ''} · ${p.gender || ''}</div>
-            <div class="card-score">score: ${p.score}</div>
-          </div>
-        </div>
-      `).join('');
-
+      } else rec.style.display = 'none';
+      document.getElementById('grid').innerHTML = (data.products || []).map(p => renderCard(p)).join('');
       setLoading(false);
     }
 
-    function applySuggestion(text) {
+    function renderCard(p) {
+      return `<div class="card">
+        <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
+        <div class="card-body">
+          <div class="card-title">${p.title || '—'}</div>
+          <div class="card-meta">${p.category || ''} · ${p.color || ''} · ${p.gender || ''}</div>
+          <div class="card-score">score: ${p.score}</div>
+        </div>
+      </div>`;
+    }
+
+    window.applySuggestion = function(text) {
       document.getElementById('query').value = text;
       searchText();
-    }
+    };
 
     function setLoading(on) {
       document.getElementById('status').innerHTML = on ? '<p class="loading">Поиск...</p>' : '';
-      if (on) {
-        document.getElementById('grid').innerHTML = '';
-        document.getElementById('recommendation').style.display = 'none';
-      }
+      if (on) { document.getElementById('grid').innerHTML = ''; document.getElementById('recommendation').style.display = 'none'; }
     }
 
-    document.getElementById('query').addEventListener('keydown', e => {
-      if (e.key === 'Enter') searchText();
-    });
+    document.getElementById('query').addEventListener('keydown', e => { if (e.key === 'Enter') searchText(); });
+
+    // ---------- Chat tab (LangGraph) ----------
+    const SESSION_KEY = 'rag_chat_session';
+    let currentSession = localStorage.getItem(SESSION_KEY);
+    updateSessionDisplay();
+
+    function updateSessionDisplay() {
+      document.getElementById('sessionDisplay').textContent = currentSession || '— (будет создана при первом сообщении)';
+    }
+
+    window.resetSession = function() {
+      currentSession = null;
+      localStorage.removeItem(SESSION_KEY);
+      updateSessionDisplay();
+      document.getElementById('chatBox').innerHTML = '<div class="msg system"><div class="msg-bubble">Новая сессия. История очищена.</div></div>';
+      document.getElementById('chatGrid').innerHTML = '';
+    };
+
+    function appendMsg(role, content, extraHtml = '') {
+      const box = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.innerHTML = `<div class="msg-bubble">${extraHtml}${escapeHtml(content)}</div>`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function escapeHtml(s) { return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    window.sendChat = async function() {
+      const input = document.getElementById('chatMsg');
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = '';
+      appendMsg('user', msg);
+      const thinking = document.createElement('div');
+      thinking.className = 'msg system';
+      thinking.innerHTML = '<div class="msg-bubble">⏳ LangGraph выполняется...</div>';
+      document.getElementById('chatBox').appendChild(thinking);
+
+      try {
+        const res = await fetch(`${API}/chat`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ session_id: currentSession, message: msg }),
+        });
+        thinking.remove();
+        if (!res.ok) {
+          appendMsg('bot', `Ошибка ${res.status}`);
+          return;
+        }
+        const data = await res.json();
+        if (!currentSession) {
+          currentSession = data.session_id;
+          localStorage.setItem(SESSION_KEY, currentSession);
+          updateSessionDisplay();
+        }
+        const intentBadge = `<span class="intent-tag">intent=${data.intent}</span>`;
+        const r = data.response || {};
+        const parts = [];
+        if (r.pick) parts.push(`<b>${escapeHtml(r.pick)}</b>`);
+        if (r.reason) parts.push(escapeHtml(r.reason));
+        if (r.alternatives) parts.push(`<span style="color:#666;font-size:13px">${escapeHtml(r.alternatives)}</span>`);
+        const sug = (r.suggestions || []).map(s => `<div style="color:#557;font-size:12px;margin-top:4px">• ${escapeHtml(s)}</div>`).join('');
+        const html = parts.join('<br>') + sug;
+        const wrap = document.createElement('div');
+        wrap.className = 'msg bot';
+        wrap.innerHTML = `<div class="msg-bubble">${intentBadge}<br>${html}</div>`;
+        document.getElementById('chatBox').appendChild(wrap);
+        document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
+
+        document.getElementById('chatGrid').innerHTML = (data.products || []).map(p => renderCard(p)).join('');
+      } catch (e) {
+        thinking.remove();
+        appendMsg('bot', 'Ошибка сети: ' + e.message);
+      }
+    };
+
+    document.getElementById('chatMsg').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+    // ---------- Graph modal ----------
+    window.showGraph = async function() {
+      const modal = document.getElementById('graphModal');
+      modal.classList.add('show');
+      const container = document.getElementById('mermaidContainer');
+      container.innerHTML = 'Загрузка...';
+      try {
+        const res = await fetch(`${API}/chat/graph`);
+        const { mermaid: src } = await res.json();
+        container.innerHTML = `<div class="mermaid">${src}</div>`;
+        if (window.__mermaid) {
+          await window.__mermaid.run({ nodes: container.querySelectorAll('.mermaid') });
+        }
+      } catch (e) {
+        container.innerHTML = 'Ошибка загрузки графа: ' + e.message;
+      }
+    };
+
+    window.closeGraph = function(ev) {
+      if (ev && ev.target.id !== 'graphModal' && !ev.target.classList.contains('modal-close')) return;
+      document.getElementById('graphModal').classList.remove('show');
+    };
   </script>
 </body>
 </html>

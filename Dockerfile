@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# --- CPU-only PyTorch (default): ~5 ГБ образа против ~7 ГБ с CUDA-сборкой ---
+# --- CPU-only PyTorch (default):
 # CLIP и cross-encoder инференсятся на CPU, поэтому GPU-runtime в контейнере не нужен.
 # Ставим torch ДО requirements.txt, чтобы pip не подтянул GPU-вариант как dependency.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch

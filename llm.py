@@ -149,10 +149,18 @@ def _generate_api(query: str, products: list[dict], retries: int = 2) -> dict:
                         {"role": "user", "content": _format_products(query, products)},
                     ],
                     response_format={"type": "json_object"},
-                    max_tokens=500,
+                    max_tokens=800,
                     temperature=0.5,
                 )
-                data = json.loads(resp.choices[0].message.content)
+                content = resp.choices[0].message.content or "{}"
+                try:
+                    data = json.loads(content)
+                except json.JSONDecodeError:
+                    # Verbose модели иногда обрезаются на max_tokens посреди JSON
+                    log.warning("llm_generate_json_truncated", content_tail=content[-100:])
+                    data = {"pick": products[0]["title"] if products else None,
+                            "reason": "LLM-ответ был обрезан, показываем top-1 как есть",
+                            "alternatives": None, "suggestions": []}
                 return {
                     "pick": data.get("pick"),
                     "reason": data.get("reason"),

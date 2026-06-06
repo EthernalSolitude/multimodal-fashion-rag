@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from prometheus_client import make_asgi_app
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cache import check_rate_limit
 from chat import run_chat_turn
@@ -264,8 +264,12 @@ async def search_image_endpoint(
 
 
 class ChatRequest(BaseModel):
-    session_id: str | None = None
-    message: str
+    session_id: str | None = Field(
+        default=None,
+        examples=[None],
+        description="Не передавай на первый ход — сервер сгенерирует. На последующих ходах передавай тот же id чтобы продолжить диалог.",
+    )
+    message: str = Field(..., examples=["blue shirt for men"])
 
 
 class ChatResponse(BaseModel):
@@ -285,6 +289,14 @@ async def chat_endpoint(req: ChatRequest):
             response=Recommendation(**(result["response"] or {})),
             products=_build_results(result["products"]),
         )
+
+
+@app.get("/chat/graph")
+def chat_graph():
+    """Возвращает структуру LangGraph-флоу как mermaid-исходник.
+    UI использует это для отрисовки графа диалога."""
+    from chat import get_graph
+    return {"mermaid": get_graph().get_graph().draw_mermaid()}
 
 
 @app.get("/filters")

@@ -100,3 +100,17 @@ def test_rate_limit_not_applied_to_health():
             r = client.get("/health")
     assert r.status_code == 200
     mock_rl.assert_not_called()
+
+
+def test_chat_graph_endpoint_returns_mermaid():
+    with patch.object(api.qdrant_client, "scroll", return_value=_scroll_with([])):
+        with TestClient(api.app) as client:
+            r = client.get("/chat/graph")
+    assert r.status_code == 200
+    body = r.json()
+    assert "mermaid" in body
+    src = body["mermaid"]
+    # Ноды LangGraph должны фигурировать в сгенерированном mermaid-исходнике
+    assert "analyze" in src
+    assert "search_and_respond" in src
+    assert "decline" in src
