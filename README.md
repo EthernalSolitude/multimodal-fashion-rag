@@ -2,20 +2,20 @@
 
 Мультимодальный поиск по fashion-каталогу: русские запросы → англоязычные товары, поиск по тексту и по картинке, LLM-консультант с follow-up подсказками. Observability через Prometheus + Grafana, тесты и CI.
 
-[![CI](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-81%25-brightgreen) ![Python](https://img.shields.io/badge/python-3.12-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid-red) ![Redis](https://img.shields.io/badge/Redis-cache%20%2B%20ratelimit-DC382D) ![LangGraph](https://img.shields.io/badge/LangGraph-chat-FF6B35) ![Docker](https://img.shields.io/badge/docker--compose-ready-2496ED)
+[![CI](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/EthernalSolitude/multimodal-fashion-rag/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-82%25-brightgreen) ![Python](https://img.shields.io/badge/python-3.12-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid-red) ![Redis](https://img.shields.io/badge/Redis-cache%20%2B%20ratelimit-DC382D) ![LangGraph](https://img.shields.io/badge/LangGraph-chat-FF6B35) ![Docker](https://img.shields.io/badge/docker--compose-ready-2496ED)
 
 ---
 
 ## Ключевые особенности
 
-- **Гибридный поиск** (dense CLIP + sparse BM42, объединение через RRF) — **P@5: +40%**, **MRR@10: +37%** по сравнению с чисто dense-поиском
+- **Гибридный поиск** (dense CLIP + sparse BM42 + cross-encoder rerank) — **P@5 = 0.934 [0.904, 0.960]** на 100-query benchmark с bootstrap 95% CI, **+43% над dense-only** baseline (статистически значимо, non-overlapping CI)
 - **LLM переформулирует запрос** в несколько фраз → fan-out поиск → cross-encoder ранжирует общий список — помогает на нечётких запросах типа «что-нибудь для зала»
 - **Guardrail** — LLM проверяет что запрос про одежду, отказывает на off-topic («расскажи про погоду»), кэширует результат
 - **Observability** — структурированные JSON-логи со сквозным `request_id`, Prometheus-метрики по каждой стадии пайплайна, готовый Grafana-дашборд
 - **Redis shared cache** для повторяющихся LLM-запросов (guardrail и переформулировка), fail-open паттерн — сервис работает и без Redis
 - **Rate limiting** через Redis (fixed-window, по IP) для тяжёлых LLM-эндпоинтов; защита от злоупотреблений с возвратом 429 + `Retry-After`
 - **Conversational mode на LangGraph** — мультитёрный диалог с persisted-сессией в Redis, граф из 3 нод с условным роутингом (`analyze → search_and_respond / decline`)
-- **70 автоматических тестов** (~8.6 сек, без GPU и БД, **coverage 81%**), **CI/CD на GitHub Actions** — линтер, тесты и автоматическая публикация Docker-образа в [GitHub Container Registry](https://github.com/EthernalSolitude/multimodal-fashion-rag/pkgs/container/multimodal-fashion-rag) на каждый push в main
+- **90 автоматических тестов** (~10 сек, без GPU и БД, **coverage 82%**), **CI/CD на GitHub Actions** — линтер, тесты и автоматическая публикация Docker-образа в [GitHub Container Registry](https://github.com/EthernalSolitude/multimodal-fashion-rag/pkgs/container/multimodal-fashion-rag) на каждый push в main
 - **Один `docker compose up --build`** поднимает всё: API, Qdrant, Redis, Prometheus, Grafana — или `docker pull ghcr.io/ethernalsolitude/multimodal-fashion-rag:latest`
 
 ---
@@ -75,24 +75,26 @@ flowchart LR
 
 ## Метрики
 
-Synthetic eval на 100 запросов-троек `(color, gender, category)` + Top-K из каталога. Ground truth — товары, совпадающие по всем трём полям.
+Eval-харнесс с **bootstrap 95% CI** (1000 ресэмплов) на фиксированном test-set из **100 категориальных запросов** — `{Color} {Category} for {Gender}`. Ground truth: товары, совпадающие по всем трём фасетам. Test-set заморожен в `eval_data/test_queries.json` для воспроизводимости между прогонами.
 
-| Конфиг                 | P@5    | MRR@10 | Δ P@5      |
-|------------------------|--------|--------|------------|
-| Dense only             | 0.258  | 0.652  | baseline   |
-| **Dense+Sparse RRF**   | 0.362  | 0.894  | **+40%**   |
-| RRF + filters          | 0.386  | 0.990  | +50%       |
-| RRF + filters + rerank | 0.386  | 0.990  | +50%       |
+| Конфиг                       | P@5                       | R@10                      | NDCG@10                   | MRR@10                    |
+|------------------------------|---------------------------|---------------------------|---------------------------|---------------------------|
+| BM25 sparse only             | 0.894 [0.856, 0.926]      | 0.935 [0.907, 0.960]      | 0.920 [0.891, 0.945]      | 0.940 [0.910, 0.970]      |
+| Dense CLIP only              | 0.654 [0.592, 0.720]      | 0.646 [0.590, 0.703]      | 0.661 [0.606, 0.716]      | 0.813 [0.749, 0.870]      |
+| Hybrid RRF                   | 0.806 [0.764, 0.844]      | 0.862 [0.826, 0.895]      | 0.848 [0.813, 0.880]      | 0.946 [0.913, 0.977]      |
+| **Hybrid + cross-encoder rerank** | **0.934 [0.904, 0.960]** | **0.961 [0.938, 0.979]** | **0.955 [0.933, 0.973]** | **0.978 [0.953, 0.995]** |
 
 **Что означают цифры:**
 
-- **+40% P@5 от перехода на hybrid** — главный инженерный вывод. Только dense (CLIP) пропускает запросы с редкими токенами (бренды, артикулы) — BM42 их добавляет, RRF объединяет рейтинги.
-- **Rerank не меняет метрики на этой eval** — потому что после жёстких фильтров top-10 уже совпадает с ground truth. На нечётких запросах («что-нибудь для зала») rerank будет заметен — это измеряется отдельным `eval_diverse.py` с LLM-judge.
+- **Полный пайплайн лучший на всех 4 метриках**: P@5 = 0.934 [0.904, 0.960]. Non-overlapping CI с dense-only baseline (0.654 [0.592, 0.720]) подтверждает статистическую значимость улучшения (+43% P@5).
+- **Cross-encoder rerank — главный лифт качества**: +12pp P@5 над голым hybrid'ом, +8pp NDCG@10.
+- **Любопытный нюанс**: на прямых categorical-запросах **BM25 alone сильнее голого hybrid'а** (P@5 0.894 vs 0.806) — sparse идеально матчит keywords, dense на таких прямых запросах добавляет шума. Это инсайт, который скрыт в single-metric eval'е.
+- Полный отчёт: [`eval_data/results.md`](eval_data/results.md). Сырые данные: [`eval_data/results.json`](eval_data/results.json).
 
 Запуск eval:
 ```bash
-python eval.py                 # категориальный synthetic
-EVAL_NUM_QUERIES=30 python eval_diverse.py   # LLM-generated + LLM-judged
+python eval_full.py                # использует фиксированный test-set, иначе создаёт
+python eval_full.py --regenerate   # пересоздать test-set
 ```
 
 ---
@@ -112,7 +114,8 @@ EVAL_NUM_QUERIES=30 python eval_diverse.py   # LLM-generated + LLM-judged
 | Rate limiting      | Redis fixed-window per IP (fail-open), 429 + Retry-After |
 | Conversational     | LangGraph (3-node graph, conditional routing) + Redis session state |
 | Observability      | Prometheus + Grafana + structlog (JSON)           |
-| Tests              | pytest + pytest-mock + pytest-cov (70 тестов, coverage 81%) |
+| Tests              | pytest + pytest-mock + pytest-cov (90 тестов, coverage 82%) |
+| Eval               | Frozen test-set (100 queries) + bootstrap 95% CI + 4 baselines |
 | CI/CD              | GitHub Actions (ruff + pytest + Docker → GHCR)    |
 | Orchestration      | Docker Compose                                    |
 

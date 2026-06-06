@@ -9,6 +9,7 @@ omit = [
     "download_models.py",
     "eval.py",
     "eval_diverse.py",
+    "eval_full.py",
     "tests/*",
 ]
 
