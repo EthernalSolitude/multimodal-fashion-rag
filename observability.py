@@ -52,6 +52,12 @@ cache_misses = Counter(
     labelnames=("namespace",),
 )
 
+rate_limited = Counter(
+    "rate_limited_requests_total",
+    "Requests rejected by rate limiter",
+    labelnames=("endpoint",),
+)
+
 
 def configure_logging() -> None:
     logging.basicConfig(format="%(message)s", level=logging.INFO)

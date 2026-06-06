@@ -5,12 +5,13 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from prometheus_client import make_asgi_app
 from pydantic import BaseModel
 
+from cache import check_rate_limit
 from llm import generate, is_fashion_query, reformulate_query
 from observability import (
     clear_context,
@@ -18,6 +19,7 @@ from observability import (
     guardrail_rejections,
     log,
     new_request_id,
+    rate_limited,
     search_requests,
     timed,
 )
@@ -25,6 +27,9 @@ from search import client as qdrant_client
 from search import multi_query_search, search, search_by_image
 
 configure_logging()
+
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
+RATE_LIMITED_PATHS = {"/search", "/search/image"}
 
 
 _filters_cache: dict = {"colors": [], "genders": [], "categories": []}
@@ -62,6 +67,27 @@ async def observability_middleware(request: Request, call_next):
     rid = new_request_id()
     t0 = time.perf_counter()
     status = "ok"
+
+    # Rate limit для тяжёлых LLM-эндпоинтов (fail-open при отсутствии Redis)
+    if request.url.path in RATE_LIMITED_PATHS:
+        client_id = request.client.host if request.client else "unknown"
+        allowed, retry_after = check_rate_limit(
+            namespace="search", identifier=client_id,
+            limit=RATE_LIMIT_PER_MINUTE, window_seconds=60,
+        )
+        if not allowed:
+            rate_limited.labels(endpoint=request.url.path).inc()
+            log.info("rate_limited", path=request.url.path, client=client_id, retry_after=retry_after)
+            dur_ms = round((time.perf_counter() - t0) * 1000, 1)
+            search_requests.labels(endpoint=request.url.path, status="rate_limited").inc()
+            log.info("request", path=request.url.path, method=request.method, duration_ms=dur_ms, status="rate_limited")
+            clear_context()
+            return JSONResponse(
+                status_code=429,
+                content={"detail": f"Слишком много запросов. Попробуй через {retry_after} сек."},
+                headers={"X-Request-ID": rid, "Retry-After": str(retry_after)},
+            )
+
     try:
         response = await call_next(request)
         if response.status_code >= 500:

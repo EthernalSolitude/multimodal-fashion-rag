@@ -1,12 +1,13 @@
-"""Redis-кеш для LLM-вызовов с fail-open поведением.
+"""Redis-кеш для LLM-вызовов и rate limiting с fail-open поведением.
 
 Если REDIS_URL не задан, или Redis недоступен — все операции no-op'ятся:
-get_json возвращает None, set_json молча проглатывает.
-Это значит, что приложение работает без Redis, просто без кеша.
+get_json возвращает None, set_json молча проглатывает, rate-limit пропускает.
+Это значит, что приложение работает без Redis, просто без кеша и без лимитов.
 """
 import hashlib
 import json
 import os
+import time
 from typing import Any
 
 from observability import cache_hits, cache_misses, log
@@ -69,6 +70,34 @@ def set_json(namespace: str, key: str, value: Any, ttl_seconds: int = 86400) -> 
         c.setex(key, ttl_seconds, json.dumps(value, ensure_ascii=False))
     except Exception as e:
         log.warning("cache_set_failed", error=str(e), key=key)
+
+
+def check_rate_limit(
+    namespace: str, identifier: str, limit: int, window_seconds: int = 60,
+) -> tuple[bool, int]:
+    """Fixed-window счётчик через Redis INCR + EXPIRE.
+
+    Возвращает (allowed, retry_after_seconds). При недоступности Redis — fail-open:
+    разрешаем запрос, retry_after=0. На время outage пользователи не блокируются.
+    """
+    c = _get_client()
+    if c is None:
+        return True, 0
+    try:
+        now = int(time.time())
+        bucket = now // window_seconds
+        key = f"ratelimit:{namespace}:{identifier}:{bucket}"
+        count = c.incr(key)
+        if count == 1:
+            # Только на первом инкременте ставим TTL — экономим RTT
+            c.expire(key, window_seconds + 1)
+        if count > limit:
+            retry_after = window_seconds - (now % window_seconds)
+            return False, max(retry_after, 1)
+        return True, 0
+    except Exception as e:
+        log.warning("rate_limit_check_failed", error=str(e))
+        return True, 0
 
 
 def reset_for_tests() -> None:

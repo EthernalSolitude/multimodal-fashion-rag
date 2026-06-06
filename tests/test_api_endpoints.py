@@ -79,3 +79,24 @@ def test_search_returns_products_when_guardrail_disabled():
     body = r.json()
     assert len(body["products"]) == 1
     assert body["products"][0]["title"] == "Shirt"
+
+
+def test_rate_limit_returns_429_with_retry_after():
+    with patch.object(api.qdrant_client, "scroll", return_value=_scroll_with([])), \
+         patch("api.check_rate_limit", return_value=(False, 42)):
+        with TestClient(api.app) as client:
+            r = client.post("/search", json={"query": "x", "guardrail": False, "with_llm": False,
+                                              "reformulate": False})
+    assert r.status_code == 429
+    assert r.headers["Retry-After"] == "42"
+    assert "x-request-id" in {k.lower() for k in r.headers.keys()}
+
+
+def test_rate_limit_not_applied_to_health():
+    """Лимит должен срабатывать только на /search и /search/image, не на health/filters."""
+    with patch.object(api.qdrant_client, "scroll", return_value=_scroll_with([])), \
+         patch("api.check_rate_limit", return_value=(False, 60)) as mock_rl:
+        with TestClient(api.app) as client:
+            r = client.get("/health")
+    assert r.status_code == 200
+    mock_rl.assert_not_called()
