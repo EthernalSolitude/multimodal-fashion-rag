@@ -16,12 +16,28 @@ def _fake_point(color: str, gender: str, category: str) -> MagicMock:
     return p
 
 
-def test_health_returns_ok():
-    with patch.object(api.qdrant_client, "scroll", return_value=_scroll_with([])):
+def test_health_returns_ok_when_qdrant_alive():
+    with patch.object(api.qdrant_client, "scroll", return_value=_scroll_with([])), \
+         patch.object(api.qdrant_client, "get_collections", return_value=MagicMock()):
         with TestClient(api.app) as client:
             r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    body = r.json()
+    assert body["status"] == "ok"
+    assert body["components"]["qdrant"] == "ok"
+    assert body["components"]["redis"] == "disabled"
+
+
+def test_health_returns_503_when_qdrant_down():
+    failing = MagicMock(side_effect=RuntimeError("connection refused"))
+    with patch.object(api.qdrant_client, "scroll", return_value=_scroll_with([])), \
+         patch.object(api.qdrant_client, "get_collections", side_effect=failing):
+        with TestClient(api.app) as client:
+            r = client.get("/health")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "degraded"
+    assert body["components"]["qdrant"] == "down"
 
 
 def test_filters_endpoint_returns_unique_sorted_values():

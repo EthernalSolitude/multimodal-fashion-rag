@@ -3,13 +3,13 @@
 которых не ловит синтетический eval.py на категориальных тройках."""
 
 import json
-import os
 import time
 
+from config import settings
 from llm import _client, _model, reformulate_query
 from search import multi_query_search, search
 
-NUM_QUERIES = int(os.getenv("EVAL_NUM_QUERIES", "30"))
+NUM_QUERIES = settings.eval_num_queries
 TOP_K = 5
 
 

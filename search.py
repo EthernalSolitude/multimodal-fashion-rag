@@ -1,7 +1,6 @@
 import math
 import os
 
-from dotenv import load_dotenv
 from fastembed import SparseTextEmbedding
 from PIL import Image
 from qdrant_client import QdrantClient
@@ -16,20 +15,42 @@ from qdrant_client.models import (
 )
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
+from config import settings
 from observability import timed
 
-load_dotenv()
+# Аббревиатуры для backward-compat с местами где импортируют как константы
+RERANK_CANDIDATES = settings.rerank_candidates
 
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", "20"))
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-SPARSE_MODEL_NAME = os.getenv("SPARSE_MODEL_NAME", "Qdrant/bm42-all-minilm-l6-v2-attentions")
-
-client = QdrantClient(url=QDRANT_URL)
-text_model = SentenceTransformer('./models/clip-multilingual')
-sparse_model = SparseTextEmbedding(SPARSE_MODEL_NAME)
+# Все тяжёлые клиенты/модели грузятся лениво: при `import search` ничего не
+# коннектится и не качается. Это позволяет запускать тесты и линтер без живых
+# зависимостей и не падать при `pytest --version` от битой модели.
+_client = None
+_text_model = None
+_sparse_model = None
 _image_model = None
 _reranker = None
+
+
+def _get_qdrant_client():
+    global _client
+    if _client is None:
+        _client = QdrantClient(url=settings.qdrant_url)
+    return _client
+
+
+def _get_text_model():
+    global _text_model
+    if _text_model is None:
+        local = './models/clip-multilingual'
+        _text_model = SentenceTransformer(local if os.path.exists(local) else 'sentence-transformers/clip-ViT-B-32-multilingual-v1')
+    return _text_model
+
+
+def _get_sparse_model():
+    global _sparse_model
+    if _sparse_model is None:
+        _sparse_model = SparseTextEmbedding(settings.sparse_model_name)
+    return _sparse_model
 
 
 def _get_image_model():
@@ -44,8 +65,20 @@ def _get_reranker():
     global _reranker
     if _reranker is None:
         local_path = './models/reranker'
-        _reranker = CrossEncoder(local_path if os.path.exists(local_path) else RERANKER_MODEL)
+        _reranker = CrossEncoder(local_path if os.path.exists(local_path) else settings.reranker_model)
     return _reranker
+
+
+def __getattr__(name: str):
+    """Backward-compat для импортов `from search import client/text_model/sparse_model`.
+    Триггерит ленивую инициализацию при первом обращении."""
+    if name == "client":
+        return _get_qdrant_client()
+    if name == "text_model":
+        return _get_text_model()
+    if name == "sparse_model":
+        return _get_sparse_model()
+    raise AttributeError(f"module 'search' has no attribute {name!r}")
 
 
 def _build_filter(filters: dict | None) -> Filter | None:
@@ -70,13 +103,13 @@ def _point_to_dict(point) -> dict:
 
 
 def _encode_sparse(query: str) -> SparseVector:
-    s = next(iter(sparse_model.embed([query])))
+    s = next(iter(_get_sparse_model().embed([query])))
     return SparseVector(indices=s.indices.tolist(), values=s.values.tolist())
 
 
 def _search_dense_only(vector: list, top_k: int, filters: dict | None, using: str = "dense"):
     with timed(f"dense_{using}"):
-        return client.query_points(
+        return _get_qdrant_client().query_points(
             collection_name="fashion",
             query=vector,
             using=using,
@@ -87,10 +120,10 @@ def _search_dense_only(vector: list, top_k: int, filters: dict | None, using: st
 
 def _search_hybrid_rrf(query: str, top_k: int, filters: dict | None):
     with timed("hybrid_rrf"):
-        dense_vec = text_model.encode(query).tolist()
+        dense_vec = _get_text_model().encode(query).tolist()
         sparse_vec = _encode_sparse(query)
         qfilter = _build_filter(filters)
-        return client.query_points(
+        return _get_qdrant_client().query_points(
             collection_name="fashion",
             prefetch=[
                 Prefetch(query=dense_vec, using="dense", limit=RERANK_CANDIDATES, filter=qfilter),
@@ -131,7 +164,7 @@ def search(
     if hybrid:
         points = _search_hybrid_rrf(query, limit, filters)
     else:
-        vector = text_model.encode(query).tolist()
+        vector = _get_text_model().encode(query).tolist()
         points = _search_dense_only(vector, limit, filters)
 
     if rerank:
@@ -151,14 +184,14 @@ def multi_query_search(
     hybrid: bool = True,
     per_query_limit: int | None = None,
 ) -> list[dict]:
-    """Fan-out по подзапросам, дедуп по id, опциональный rerank.
-    Для rerank берём первый ASCII-запрос (cross-encoder англоязычный — MS-MARCO)."""
+    """Последовательно ищем по каждому подзапросу, дедуплицируем по id,
+    опционально переранжируем cross-encoder'ом."""
     if not queries:
         return []
     limit = per_query_limit or RERANK_CANDIDATES
     seen: dict[int, object] = {}
     for q in queries:
-        pts = _search_hybrid_rrf(q, limit, filters) if hybrid else _search_dense_only(text_model.encode(q).tolist(), limit, filters)
+        pts = _search_hybrid_rrf(q, limit, filters) if hybrid else _search_dense_only(_get_text_model().encode(q).tolist(), limit, filters)
         for p in pts:
             if p.id not in seen or p.score > seen[p.id].score:
                 seen[p.id] = p

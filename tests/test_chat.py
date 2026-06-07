@@ -126,32 +126,43 @@ def test_save_session_silent_without_redis():
     chat.save_session("any-id", [{"role": "user", "content": "x"}])
 
 
-def test_session_roundtrip_with_mocked_redis():
+def _enable_fake_redis(url: str = "redis://fake:6379/0") -> None:
     import os
+    os.environ["REDIS_URL"] = url
+    import cache as cache_mod
+    from config import reload_settings
+    reload_settings()
+    cache_mod.reset_for_tests()
+
+
+def _disable_fake_redis() -> None:
+    import os
+    os.environ.pop("REDIS_URL", None)
+    import cache as cache_mod
+    from config import reload_settings
+    reload_settings()
+    cache_mod.reset_for_tests()
+
+
+def test_session_roundtrip_with_mocked_redis():
     fake_storage = {}
     fake_client = MagicMock()
     fake_client.ping.return_value = True
     fake_client.get.side_effect = lambda k: fake_storage.get(k)
     fake_client.setex.side_effect = lambda k, ttl, v: fake_storage.update({k: v})
 
-    os.environ["REDIS_URL"] = "redis://fake:6379/0"
-    import cache as cache_mod
-    cache_mod.reset_for_tests()
+    _enable_fake_redis()
     try:
         with patch("redis.from_url", return_value=fake_client):
             chat.save_session("sid1", [{"role": "user", "content": "hello"}])
             loaded = chat.load_session("sid1")
             assert loaded == [{"role": "user", "content": "hello"}]
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache_mod.reset_for_tests()
+        _disable_fake_redis()
 
 
 def test_session_history_truncated_to_max():
     messages = [{"role": "user", "content": f"msg{i}"} for i in range(20)]
-    # save_session должна обрезать до MAX_HISTORY_MESSAGES даже если передали больше
-    # Проверяем через мокнутый Redis — что в setex попало максимум 10 сообщений
-    import os
     captured = {}
     fake_client = MagicMock()
     fake_client.ping.return_value = True
@@ -161,9 +172,7 @@ def test_session_history_truncated_to_max():
 
     fake_client.setex.side_effect = capture_setex
 
-    os.environ["REDIS_URL"] = "redis://fake:6379/0"
-    import cache as cache_mod
-    cache_mod.reset_for_tests()
+    _enable_fake_redis()
     try:
         with patch("redis.from_url", return_value=fake_client):
             chat.save_session("sid", messages)
@@ -171,5 +180,4 @@ def test_session_history_truncated_to_max():
         assert len(stored["messages"]) == chat.MAX_HISTORY_MESSAGES
         assert stored["messages"][0]["content"] == "msg10"  # последние 10
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache_mod.reset_for_tests()
+        _disable_fake_redis()

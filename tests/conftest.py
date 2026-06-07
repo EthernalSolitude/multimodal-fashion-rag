@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 
 def _install_stubs() -> None:
-    # Кеш отключён по умолчанию в тестах — отдельные тесты переопределяют через monkeypatch
+    # Чистим env до импорта config — иначе локальный .env подсунет настоящий REDIS_URL
     os.environ.pop("REDIS_URL", None)
 
     dummy_model = MagicMock()
@@ -27,6 +27,13 @@ def _install_stubs() -> None:
     try:
         import qdrant_client as qc
         qc.QdrantClient = MagicMock(return_value=MagicMock())
+    except ImportError:
+        pass
+
+    # После чистки env перечитаем настройки — иначе settings.redis_url помнит старое значение
+    try:
+        from config import reload_settings
+        reload_settings()
     except ImportError:
         pass
 

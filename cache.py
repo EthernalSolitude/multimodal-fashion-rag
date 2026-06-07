@@ -6,10 +6,10 @@ get_json возвращает None, set_json молча проглатывает
 """
 import hashlib
 import json
-import os
 import time
 from typing import Any
 
+from config import settings
 from observability import cache_hits, cache_misses, log
 
 _client = None
@@ -22,7 +22,7 @@ def _get_client():
     if _init_attempted:
         return _client
     _init_attempted = True
-    url = os.getenv("REDIS_URL", "").strip()
+    url = settings.redis_url.strip()
     if not url:
         return None
     try:

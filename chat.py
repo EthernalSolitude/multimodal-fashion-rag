@@ -9,18 +9,17 @@ State хранится в Redis под ключом chat:session:<id> с TTL CHA
 Если Redis недоступен — каждый turn идёт как новая сессия (fail-open).
 """
 import json
-import os
 import uuid
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from cache import cache_key, get_json, set_json
+from config import settings
 from llm import _client, _model, generate
 from observability import log, timed
 from search import multi_query_search
 
-CHAT_SESSION_TTL_SECONDS = int(os.getenv("CHAT_SESSION_TTL_SECONDS", "3600"))
 MAX_HISTORY_MESSAGES = 10
 
 
@@ -169,7 +168,7 @@ def save_session(session_id: str, messages: list[dict]) -> None:
     """Сохраняет messages в Redis с TTL."""
     set_json("chat_session", _session_key(session_id),
              {"messages": messages[-MAX_HISTORY_MESSAGES:]},
-             ttl_seconds=CHAT_SESSION_TTL_SECONDS)
+             ttl_seconds=settings.chat_session_ttl_seconds)
 
 
 def run_chat_turn(session_id: str | None, user_message: str) -> dict:

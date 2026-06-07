@@ -1,27 +1,18 @@
 import json
-import os
 import time
 
-from dotenv import load_dotenv
-
 from cache import cache_key, get_json, set_json
+from config import settings
 from observability import llm_errors, log, timed
-
-load_dotenv()
-
-LLM_BACKEND = os.getenv("LLM_BACKEND", "api")
 
 
 def _client():
     from openai import OpenAI
-    return OpenAI(
-        base_url=os.getenv("LLM_API_BASE_URL", "https://api.groq.com/openai/v1"),
-        api_key=os.getenv("LLM_API_KEY", ""),
-    )
+    return OpenAI(base_url=settings.llm_api_base_url, api_key=settings.llm_api_key)
 
 
 def _model() -> str:
-    return os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+    return settings.llm_model
 
 
 # ---------- Guardrail ----------
@@ -181,9 +172,11 @@ def _generate_api(query: str, products: list[dict], retries: int = 2) -> dict:
 
 
 def _generate_local(query: str, products: list[dict]) -> dict:
+    import os
+
     from llama_cpp import Llama
     llm = Llama(
-        model_path=os.getenv("LOCAL_MODEL_PATH", ""),
+        model_path=settings.local_model_path,
         n_ctx=2048,
         n_threads=os.cpu_count(),
         n_gpu_layers=0,
@@ -206,6 +199,6 @@ def _generate_local(query: str, products: list[dict]) -> dict:
 def generate(query: str, products: list[dict]) -> dict:
     if not products:
         return _EMPTY_RECOMMENDATION
-    if LLM_BACKEND == "local":
+    if settings.llm_backend == "local":
         return _generate_local(query, products)
     return _generate_api(query, products)

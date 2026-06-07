@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from cache import check_rate_limit
 from chat import run_chat_turn
+from config import settings
 from llm import generate, is_fashion_query, reformulate_query
 from observability import (
     clear_context,
@@ -24,12 +25,11 @@ from observability import (
     search_requests,
     timed,
 )
-from search import client as qdrant_client
+from search import client as qdrant_client  # lazy через search.__getattr__
 from search import multi_query_search, search, search_by_image
 
 configure_logging()
 
-RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
 RATE_LIMITED_PATHS = {"/search", "/search/image", "/chat"}
 
 
@@ -74,7 +74,7 @@ async def observability_middleware(request: Request, call_next):
         client_id = request.client.host if request.client else "unknown"
         allowed, retry_after = check_rate_limit(
             namespace="search", identifier=client_id,
-            limit=RATE_LIMIT_PER_MINUTE, window_seconds=60,
+            limit=settings.rate_limit_per_minute, window_seconds=60,
         )
         if not allowed:
             rate_limited.labels(endpoint=request.url.path).inc()
@@ -306,7 +306,39 @@ def get_filters():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    """Пробивает живость зависимостей. 503 если Qdrant не отвечает.
+    Redis опционален: если URL не задан — статус 'disabled'; если задан и не
+    отвечает — 'down' (но Qdrant решает финальный код ответа).
+    """
+    components = {}
+
+    try:
+        qdrant_client.get_collections()
+        components["qdrant"] = "ok"
+    except Exception as e:
+        log.warning("health_qdrant_failed", error=str(e))
+        components["qdrant"] = "down"
+
+    if not settings.redis_url.strip():
+        components["redis"] = "disabled"
+    else:
+        from cache import _get_client
+        c = _get_client()
+        if c is None:
+            components["redis"] = "down"
+        else:
+            try:
+                c.ping()
+                components["redis"] = "ok"
+            except Exception as e:
+                log.warning("health_redis_failed", error=str(e))
+                components["redis"] = "down"
+
+    status_code = 200 if components["qdrant"] == "ok" else 503
+    return JSONResponse(status_code=status_code, content={
+        "status": "ok" if status_code == 200 else "degraded",
+        "components": components,
+    })
 
 
 if __name__ == "__main__":

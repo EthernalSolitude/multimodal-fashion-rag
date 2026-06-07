@@ -12,22 +12,21 @@ from qdrant_client.models import (
 )
 from sentence_transformers import SentenceTransformer
 
+from config import settings
+
 IMAGES_DIR = "./images"
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-SPARSE_MODEL_NAME = os.getenv("SPARSE_MODEL_NAME", "Qdrant/bm42-all-minilm-l6-v2-attentions")
-
 print("Multimodal RAG: Qdrant + CLIP (dense) + BM42 (sparse)")
 
-client = QdrantClient(url=QDRANT_URL)
-print(f" Qdrant: {QDRANT_URL}")
+client = QdrantClient(url=settings.qdrant_url)
+print(f" Qdrant: {settings.qdrant_url}")
 
 dense_model = SentenceTransformer('./models/clip-multilingual')
 print(" CLIP dense (512)")
 
-sparse_model = SparseTextEmbedding(SPARSE_MODEL_NAME)
-print(f" Sparse: {SPARSE_MODEL_NAME}")
+sparse_model = SparseTextEmbedding(settings.sparse_model_name)
+print(f" Sparse: {settings.sparse_model_name}")
 
 dataset = load_dataset("ashraq/fashion-product-images-small", split="train[:5000]")
 print(f" {len(dataset)} товаров")

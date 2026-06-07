@@ -3,11 +3,22 @@ import os
 from unittest.mock import MagicMock, patch
 
 import cache
+from config import reload_settings
+
+
+def _set_redis_url(url: str | None) -> None:
+    """Меняем REDIS_URL и перечитываем settings — иначе cache видит старое значение."""
+    if url is None:
+        os.environ.pop("REDIS_URL", None)
+    else:
+        os.environ["REDIS_URL"] = url
+    reload_settings()
+    cache.reset_for_tests()
 
 
 def setup_function():
     """Сброс singleton перед каждым тестом — иначе протекает между тестами."""
-    cache.reset_for_tests()
+    _set_redis_url(None)
 
 
 def test_cache_key_deterministic():
@@ -34,23 +45,21 @@ def test_cache_key_format_has_prefix():
 
 
 def test_get_json_returns_none_when_no_redis_url():
-    os.environ.pop("REDIS_URL", None)
+    _set_redis_url(None)
     assert cache.get_json("ns", "any-key") is None
 
 
 def test_set_json_silent_when_no_redis_url():
-    os.environ.pop("REDIS_URL", None)
+    _set_redis_url(None)
     cache.set_json("ns", "any-key", {"foo": "bar"})
 
 
 def test_get_json_returns_none_on_connection_failure():
-    os.environ["REDIS_URL"] = "redis://nonexistent-host-xyz:6379/0"
-    cache.reset_for_tests()
+    _set_redis_url("redis://nonexistent-host-xyz:6379/0")
     try:
         assert cache.get_json("ns", "key") is None
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache.reset_for_tests()
+        _set_redis_url(None)
 
 
 def test_cache_roundtrip_with_mocked_redis():
@@ -60,16 +69,14 @@ def test_cache_roundtrip_with_mocked_redis():
     fake_client.get.side_effect = lambda k: fake_storage.get(k)
     fake_client.setex.side_effect = lambda k, ttl, v: fake_storage.update({k: v})
 
-    os.environ["REDIS_URL"] = "redis://fake:6379/0"
-    cache.reset_for_tests()
+    _set_redis_url("redis://fake:6379/0")
     try:
         with patch("redis.from_url", return_value=fake_client):
             cache.set_json("ns", "k1", {"hello": "world"})
             assert cache.get_json("ns", "k1") == {"hello": "world"}
             assert cache.get_json("ns", "missing") is None
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache.reset_for_tests()
+        _set_redis_url(None)
 
 
 def _fake_redis_for_ratelimit():
@@ -88,8 +95,7 @@ def _fake_redis_for_ratelimit():
 
 
 def test_rate_limit_allows_below_threshold():
-    os.environ["REDIS_URL"] = "redis://fake:6379/0"
-    cache.reset_for_tests()
+    _set_redis_url("redis://fake:6379/0")
     fake_client, _ = _fake_redis_for_ratelimit()
     try:
         with patch("redis.from_url", return_value=fake_client):
@@ -98,13 +104,11 @@ def test_rate_limit_allows_below_threshold():
                 assert allowed is True
                 assert retry == 0
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache.reset_for_tests()
+        _set_redis_url(None)
 
 
 def test_rate_limit_rejects_above_threshold():
-    os.environ["REDIS_URL"] = "redis://fake:6379/0"
-    cache.reset_for_tests()
+    _set_redis_url("redis://fake:6379/0")
     fake_client, _ = _fake_redis_for_ratelimit()
     try:
         with patch("redis.from_url", return_value=fake_client):
@@ -114,21 +118,18 @@ def test_rate_limit_rejects_above_threshold():
             assert allowed is False
             assert 1 <= retry <= 60
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache.reset_for_tests()
+        _set_redis_url(None)
 
 
 def test_rate_limit_fail_open_without_redis():
-    os.environ.pop("REDIS_URL", None)
-    cache.reset_for_tests()
+    _set_redis_url(None)
     for _ in range(100):
         allowed, _ = cache.check_rate_limit("t", "ip", limit=3, window_seconds=60)
         assert allowed is True
 
 
 def test_rate_limit_isolates_by_identifier():
-    os.environ["REDIS_URL"] = "redis://fake:6379/0"
-    cache.reset_for_tests()
+    _set_redis_url("redis://fake:6379/0")
     fake_client, _ = _fake_redis_for_ratelimit()
     try:
         with patch("redis.from_url", return_value=fake_client):
@@ -138,5 +139,4 @@ def test_rate_limit_isolates_by_identifier():
             assert cache.check_rate_limit("t", "ip1", limit=2, window_seconds=60)[0] is False
             assert cache.check_rate_limit("t", "ip2", limit=2, window_seconds=60)[0] is True
     finally:
-        os.environ.pop("REDIS_URL", None)
-        cache.reset_for_tests()
+        _set_redis_url(None)
